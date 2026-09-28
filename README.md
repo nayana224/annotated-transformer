@@ -19,6 +19,7 @@ The main study materials are under `study/`.
 
 ```text
 study/
+├── setup_venv.sh
 ├── 01_embedding_pe.py
 ├── 02_attention.py
 ├── 03_multihead.py
@@ -66,6 +67,42 @@ Cross Entropy Loss
 
 The toy setup uses small dimensions such as `d_model=4` and `num_heads=2`
 so that intermediate values can be printed and inspected directly.
+
+## Study Environment Setup
+
+The study environment is intentionally isolated inside the `study/` directory.
+
+From the repository root, run:
+
+```bash
+bash study/setup_venv.sh
+```
+
+This creates:
+
+```text
+study/.venv/
+```
+
+and installs the packages used by the study code:
+
+- CPU PyTorch
+- Matplotlib
+- Jupyter
+
+Activate the environment later with:
+
+```bash
+source study/.venv/bin/activate
+```
+
+Then open the integrated notebook with:
+
+```bash
+jupyter notebook study/Attention_Is_All_You_Need_Study.ipynb
+```
+
+The repository already ignores `.venv/`, so the local virtual environment is not committed.
 
 ## Integrated Notebook
 
