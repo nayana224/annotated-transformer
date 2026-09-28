@@ -4,105 +4,302 @@ import torch
 import torch.nn as nn
 
 
-# --------------------------------------------------
-# 1. vocabulary 설정
-# --------------------------------------------------
+# ==================================================
+# 1. Vocabulary
+# ==================================================
 #
-# 예시:
-# 0 -> <pad>
-# 1 -> <unk>
-# 2 -> I
-# 3 -> study
-# 4 -> AI
-# 5 -> love
-# 6 -> vision
-# 7 -> robot
-# 8 -> learning
-# 9 -> robotics
+# token ID
+#
+# 0 -> <PAD>
+# 1 -> I
+# 2 -> love
+# 3 -> robotics
+#
 
-vocab_size = 10
+vocab_size = 4
 d_model = 4
 
 
-# --------------------------------------------------
+# ==================================================
 # 2. Token IDs
-# --------------------------------------------------
+# ==================================================
 #
 # "I love robotics"
-# -> ["I", "love", "robotics"]
-# -> [2, 5, 9]
 #
-# tokenizer 처리는 이미 끝났다고 가정한다.
+# tokenization이 이미 끝났다고 가정한다.
+#
+# I         -> 1
+# love      -> 2
+# robotics  -> 3
+#
 
-token_ids = torch.tensor([2, 5, 9])
+token_ids = torch.tensor([
+    1,
+    2,
+    3
+])
 
-print("token_ids:")
+print("======================================")
+print("Token IDs")
+print("======================================")
+
 print(token_ids)
-
-print("token_ids shape:")
-print(token_ids.shape)
+print("shape:", token_ids.shape)
 
 
-# --------------------------------------------------
-# 3. Input Embedding
-# --------------------------------------------------
-
-embedding = nn.Embedding(vocab_size, d_model)
-
-embedded = embedding(token_ids)
-
-print("\nraw embedding:")
-print(embedded)
-
-print("embedding shape:")
-print(embedded.shape)
-
-
-# --------------------------------------------------
-# 4. Transformer 논문의 embedding scaling
-# --------------------------------------------------
+# ==================================================
+# 3. Embedding Table
+# ==================================================
 #
-# embedding * sqrt(d_model)
+# 실제 Transformer에서는 nn.Embedding의 값이
+# 학습되는 learnable parameter이다.
+#
+# 여기서는 손으로 연산을 확인하기 쉽도록
+# embedding 값을 직접 고정한다.
+# ==================================================
 
-embedded = embedded * math.sqrt(d_model)
+embedding = nn.Embedding(
+    vocab_size,
+    d_model
+)
 
-print("\nscaled embedding:")
+
+with torch.no_grad():
+
+    embedding.weight.copy_(
+
+        torch.tensor([
+
+            # <PAD>
+            [0.0, 0.0, 0.0, 0.0],
+
+            # I
+            [1.0, 0.0, 1.0, 0.0],
+
+            # love
+            [0.0, 1.0, 0.0, 1.0],
+
+            # robotics
+            [1.0, 1.0, 1.0, 1.0],
+
+        ])
+    )
+
+
+print("\n======================================")
+print("Embedding Table")
+print("======================================")
+
+print(embedding.weight)
+
+
+# ==================================================
+# 4. Embedding Lookup
+# ==================================================
+#
+# token ID를 embedding table의 row index로 사용한다.
+#
+# [1, 2, 3]
+#
+# ↓
+#
+# row 1
+# row 2
+# row 3
+#
+# 를 가져온다.
+# ==================================================
+
+embedded = embedding(
+    token_ids
+)
+
+
+print("\n======================================")
+print("Raw Embedding")
+print("======================================")
+
 print(embedded)
 
+print(
+    "shape:",
+    embedded.shape
+)
 
-# --------------------------------------------------
-# 5. Positional Encoding 생성
-# --------------------------------------------------
+
+# ==================================================
+# 5. Embedding Scaling
+# ==================================================
+#
+# Attention Is All You Need:
+#
+# Embedding * sqrt(d_model)
+#
+# 현재:
+#
+# d_model = 4
+#
+# sqrt(4) = 2
+# ==================================================
+
+scale = math.sqrt(
+    d_model
+)
+
+
+print("\nscale:")
+print(scale)
+
+
+scaled_embedding = (
+    embedded * scale
+)
+
+
+print("\n======================================")
+print("Scaled Embedding")
+print("======================================")
+
+print(
+    scaled_embedding
+)
+
+
+# ==================================================
+# 6. Position
+# ==================================================
+#
+# token의 위치:
+#
+# I         -> position 0
+# love      -> position 1
+# robotics  -> position 2
+# ==================================================
 
 seq_len = token_ids.shape[0]
 
-pe = torch.zeros(seq_len, d_model)
 
-position = torch.arange(seq_len).unsqueeze(1)
+position = torch.arange(
+    seq_len,
+    dtype=torch.float32
+).unsqueeze(1)
+
+
+print("\n======================================")
+print("Position")
+print("======================================")
+
+print(position)
+
+
+# ==================================================
+# 7. Positional Encoding
+# ==================================================
+#
+# PE(pos, 2i)
+#   = sin(pos / 10000^(2i / d_model))
+#
+# PE(pos, 2i+1)
+#   = cos(pos / 10000^(2i / d_model))
+#
+# 코드에서는 동일한 식을 계산하기 위해
+# div_term을 먼저 만든다.
+# div_term = 1 / 10000^(2i / d_model)
+# ==================================================
 
 div_term = torch.exp(
-    torch.arange(0, d_model, 2)
-    * (-math.log(10000.0) / d_model)
+
+    torch.arange(
+        0,
+        d_model,
+        2,
+        dtype=torch.float32
+    )
+
+    * (
+        -math.log(10000.0)
+        / d_model
+    )
 )
 
-pe[:, 0::2] = torch.sin(position * div_term)
-pe[:, 1::2] = torch.cos(position * div_term)
 
-print("\npositional encoding:")
+print("\n======================================")
+print("div_term")
+print("======================================")
+
+print(div_term)
+
+
+# position * div_term
+#
+# sin / cos 안에 들어가는 실제 값
+
+angles = (
+    position * div_term
+)
+
+
+print("\n======================================")
+print("Position × div_term")
+print("======================================")
+
+print(angles)
+
+
+pe = torch.zeros(
+    seq_len,
+    d_model
+)
+
+
+# even dimension
+pe[:, 0::2] = torch.sin(
+    angles
+)
+
+
+# odd dimension
+pe[:, 1::2] = torch.cos(
+    angles
+)
+
+
+print("\n======================================")
+print("Positional Encoding")
+print("======================================")
+
 print(pe)
 
-print("PE shape:")
-print(pe.shape)
+print(
+    "shape:",
+    pe.shape
+)
 
 
-# --------------------------------------------------
-# 6. Embedding + Positional Encoding
-# --------------------------------------------------
+# ==================================================
+# 8. Transformer Input
+# ==================================================
+#
+# x =
+#
+# scaled embedding
+# +
+# positional encoding
+# ==================================================
 
-x = embedded + pe
+x = (
+    scaled_embedding
+    + pe
+)
 
-print("\nTransformer input:")
+
+print("\n======================================")
+print("Transformer Input x")
+print("======================================")
+
 print(x)
 
-print("Transformer input shape:")
-print(x.shape)
+print(
+    "shape:",
+    x.shape
+)

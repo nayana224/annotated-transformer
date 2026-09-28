@@ -5,34 +5,65 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-# --------------------------------------------------
-# 1. Transformer input x
-# --------------------------------------------------
+# ==================================================
+# 0. Reproducibility
+# ==================================================
 #
-# 이전 embedding + positional encoding 결과라고 가정
+# nn.Linear의 random initialization을
+# 매 실행마다 동일하게 만든다.
+# ==================================================
+
+torch.manual_seed(42)
+
+
+# ==================================================
+# 1. Transformer Input x
+# ==================================================
 #
-# token 3개
-# d_model = 4
+# 이전 단계와 동일한 toy input을 사용한다.
 #
-# 예:
-# token 0 = I
-# token 1 = love
-# token 2 = robotics
+# row 0 = I
+# row 1 = love
+# row 2 = robotics
+#
+# shape:
+#
+# [seq_len, d_model]
+# = [3, 4]
+# ==================================================
 
 x = torch.tensor([
-    [1.0, 0.0, 1.0, 0.0],
-    [0.0, 2.0, 0.0, 2.0],
-    [1.0, 1.0, 1.0, 1.0],
+    [1.0, 0.0, 1.0, 0.0],   # I
+    [0.0, 2.0, 0.0, 2.0],   # love
+    [1.0, 1.0, 1.0, 1.0],   # robotics
 ])
 
-print("x:")
+
+print("======================================")
+print("Input x")
+print("======================================")
+
 print(x)
-print("x shape:", x.shape)
+print("shape:", x.shape)
 
 
-# --------------------------------------------------
+# ==================================================
 # 2. Multi-Head 설정
-# --------------------------------------------------
+# ==================================================
+#
+# d_model = 4
+# num_heads = 2
+#
+# 논문의 base model처럼:
+#
+# d_k = d_model / num_heads
+# d_v = d_model / num_heads
+#
+# 여기서는:
+#
+# d_k = 2
+# d_v = 2
+# ==================================================
 
 d_model = 4
 num_heads = 2
@@ -40,157 +71,447 @@ num_heads = 2
 d_k = d_model // num_heads
 d_v = d_model // num_heads
 
-print("\nd_model:", d_model)
-print("num_heads:", num_heads)
-print("d_k:", d_k)
-print("d_v:", d_v)
+
+print("\n======================================")
+print("Multi-Head Configuration")
+print("======================================")
+
+print("d_model   :", d_model)
+print("num_heads :", num_heads)
+print("d_k       :", d_k)
+print("d_v       :", d_v)
 
 
-# --------------------------------------------------
-# 3. Head 1의 Linear Projection
-# --------------------------------------------------
+# ==================================================
+# 3. Head 1 Projection
+# ==================================================
 #
-# x [3, 4]
+# 같은 x를:
 #
-# ↓ 각각 다른 Linear
+# Q1 = x W_Q1
+# K1 = x W_K1
+# V1 = x W_V1
 #
-# Q1, K1, V1 [3, 2]
+# 로 projection한다.
+#
+# PyTorch nn.Linear:
+#
+# y = x @ weight.T
+#
+# ==================================================
 
-W_Q1 = nn.Linear(d_model, d_k, bias=False)
-W_K1 = nn.Linear(d_model, d_k, bias=False)
-W_V1 = nn.Linear(d_model, d_v, bias=False)
+W_Q1 = nn.Linear(
+    d_model,
+    d_k,
+    bias=False
+)
+
+W_K1 = nn.Linear(
+    d_model,
+    d_k,
+    bias=False
+)
+
+W_V1 = nn.Linear(
+    d_model,
+    d_v,
+    bias=False
+)
+
+
+print("\n======================================")
+print("Head 1 Weight Matrices")
+print("======================================")
+
+print("\nW_Q1.weight:")
+print(W_Q1.weight)
+
+print("\nW_K1.weight:")
+print(W_K1.weight)
+
+print("\nW_V1.weight:")
+print(W_V1.weight)
+
 
 Q1 = W_Q1(x)
 K1 = W_K1(x)
 V1 = W_V1(x)
 
 
-# --------------------------------------------------
-# 4. Head 2의 Linear Projection
-# --------------------------------------------------
+print("\n======================================")
+print("Head 1 - Q, K, V")
+print("======================================")
 
-W_Q2 = nn.Linear(d_model, d_k, bias=False)
-W_K2 = nn.Linear(d_model, d_k, bias=False)
-W_V2 = nn.Linear(d_model, d_v, bias=False)
+print("\nQ1:")
+print(Q1)
+print("shape:", Q1.shape)
+
+print("\nK1:")
+print(K1)
+print("shape:", K1.shape)
+
+print("\nV1:")
+print(V1)
+print("shape:", V1.shape)
+
+
+# ==================================================
+# 4. Head 2 Projection
+# ==================================================
+#
+# Head 2는 같은 x를 보지만
+# 완전히 다른 parameter를 사용한다.
+#
+# Q2 = x W_Q2
+# K2 = x W_K2
+# V2 = x W_V2
+# ==================================================
+
+W_Q2 = nn.Linear(
+    d_model,
+    d_k,
+    bias=False
+)
+
+W_K2 = nn.Linear(
+    d_model,
+    d_k,
+    bias=False
+)
+
+W_V2 = nn.Linear(
+    d_model,
+    d_v,
+    bias=False
+)
+
+
+print("\n======================================")
+print("Head 2 Weight Matrices")
+print("======================================")
+
+print("\nW_Q2.weight:")
+print(W_Q2.weight)
+
+print("\nW_K2.weight:")
+print(W_K2.weight)
+
+print("\nW_V2.weight:")
+print(W_V2.weight)
+
 
 Q2 = W_Q2(x)
 K2 = W_K2(x)
 V2 = W_V2(x)
 
 
-print("\n=== Head 1 ===")
-print("Q1:")
-print(Q1)
-print("Q1 shape:", Q1.shape)
+print("\n======================================")
+print("Head 2 - Q, K, V")
+print("======================================")
 
-print("\nK1:")
-print(K1)
-
-print("\nV1:")
-print(V1)
-
-
-print("\n=== Head 2 ===")
-print("Q2:")
+print("\nQ2:")
 print(Q2)
-print("Q2 shape:", Q2.shape)
+print("shape:", Q2.shape)
 
 print("\nK2:")
 print(K2)
+print("shape:", K2.shape)
 
 print("\nV2:")
 print(V2)
+print("shape:", V2.shape)
 
 
-# --------------------------------------------------
-# 5. Scaled Dot-Product Attention 함수
-# --------------------------------------------------
+# ==================================================
+# 5. Scaled Dot-Product Attention
+# ==================================================
+#
+# Attention(Q, K, V)
+#
+# =
+#
+# softmax(
+#     QK^T / sqrt(d_k)
+# ) V
+#
+# ==================================================
 
 def scaled_dot_product_attention(Q, K, V):
 
-    # Q @ K^T
+    # ----------------------------------------------
+    # 1) Query-Key compatibility
+    # ----------------------------------------------
+
     scores = Q @ K.T
 
-    # scaling
-    scaled_scores = scores / math.sqrt(Q.shape[-1])
 
-    # softmax
+    # ----------------------------------------------
+    # 2) Scaling
+    # ----------------------------------------------
+
+    scaled_scores = (
+        scores / math.sqrt(Q.shape[-1])
+    )
+
+
+    # ----------------------------------------------
+    # 3) Softmax
+    # ----------------------------------------------
+
     attention_weights = F.softmax(
         scaled_scores,
         dim=-1
     )
 
-    # weighted sum of V
-    output = attention_weights @ V
 
-    return output, attention_weights
+    # ----------------------------------------------
+    # 4) Weighted Sum of V
+    # ----------------------------------------------
+
+    output = (
+        attention_weights @ V
+    )
 
 
-# --------------------------------------------------
-# 6. 각 Head에서 Attention 수행
-# --------------------------------------------------
+    return (
+        output,
+        scores,
+        scaled_scores,
+        attention_weights
+    )
 
-head1, weights1 = scaled_dot_product_attention(
+
+# ==================================================
+# 6. Head 1 Attention
+# ==================================================
+
+(
+    head1,
+    scores1,
+    scaled_scores1,
+    weights1
+) = scaled_dot_product_attention(
     Q1,
     K1,
     V1
 )
 
-head2, weights2 = scaled_dot_product_attention(
+
+print("\n======================================")
+print("Head 1 Attention")
+print("======================================")
+
+print("\nQ1 @ K1^T:")
+print(scores1)
+
+print("\nScaled Scores:")
+print(scaled_scores1)
+
+print("\nAttention Weights:")
+print(weights1)
+
+print("\nRow sums:")
+print(weights1.sum(dim=-1))
+
+print("\nHead 1 Output:")
+print(head1)
+
+print(
+    "shape:",
+    head1.shape
+)
+
+
+# ==================================================
+# 7. Head 1에서 I token을 직접 해석
+# ==================================================
+#
+# 첫 번째 query = I
+#
+# weights1[0]:
+#
+# I -> I
+# I -> love
+# I -> robotics
+#
+#
+# 그 weight로:
+#
+# V1_I
+# V1_love
+# V1_robotics
+#
+# 를 weighted sum한다.
+# ==================================================
+
+print("\n======================================")
+print("Head 1 - Query I")
+print("======================================")
+
+print("\nAttention weights:")
+
+print(
+    "I -> I        :",
+    weights1[0, 0]
+)
+
+print(
+    "I -> love     :",
+    weights1[0, 1]
+)
+
+print(
+    "I -> robotics :",
+    weights1[0, 2]
+)
+
+
+head1_I_manual = (
+
+    weights1[0, 0] * V1[0]
+
+    +
+
+    weights1[0, 1] * V1[1]
+
+    +
+
+    weights1[0, 2] * V1[2]
+)
+
+
+print("\nManual Head 1 output for I:")
+print(head1_I_manual)
+
+print("\nMatrix Head 1 output for I:")
+print(head1[0])
+
+
+# ==================================================
+# 8. Head 2 Attention
+# ==================================================
+
+(
+    head2,
+    scores2,
+    scaled_scores2,
+    weights2
+) = scaled_dot_product_attention(
     Q2,
     K2,
     V2
 )
 
 
-print("\n=== Head 1 Attention Weights ===")
-print(weights1)
+print("\n======================================")
+print("Head 2 Attention")
+print("======================================")
 
-print("\nHead 1 Output:")
-print(head1)
-print("shape:", head1.shape)
+print("\nQ2 @ K2^T:")
+print(scores2)
 
+print("\nScaled Scores:")
+print(scaled_scores2)
 
-print("\n=== Head 2 Attention Weights ===")
+print("\nAttention Weights:")
 print(weights2)
+
+print("\nRow sums:")
+print(weights2.sum(dim=-1))
 
 print("\nHead 2 Output:")
 print(head2)
-print("shape:", head2.shape)
+
+print(
+    "shape:",
+    head2.shape
+)
 
 
-# --------------------------------------------------
-# 7. 두 Head의 결과를 Concatenate
-# --------------------------------------------------
+# ==================================================
+# 9. 두 Head 결과 비교
+# ==================================================
 #
-# head1 : [3, 2]
-# head2 : [3, 2]
+# 같은 x를 입력했지만
+#
+# Head 1:
+# W_Q1 / W_K1 / W_V1
+#
+# Head 2:
+# W_Q2 / W_K2 / W_V2
+#
+# 가 다르기 때문에
+# 서로 다른 attention 결과가 나온다.
+# ==================================================
+
+print("\n======================================")
+print("Compare Head Outputs")
+print("======================================")
+
+print("\nHead 1:")
+print(head1)
+
+print("\nHead 2:")
+print(head2)
+
+
+# ==================================================
+# 10. Concatenate
+# ==================================================
+#
+# head1:
+# [3, 2]
+#
+# head2:
+# [3, 2]
 #
 # concat:
 #
-# [3, 2] + [3, 2]
-#        ↓
-#      [3, 4]
+# [3, 4]
+#
+#
+# token별로:
+#
+# [Head1 features | Head2 features]
+#
+# 를 붙인다.
+# ==================================================
 
 concat = torch.cat(
-    [head1, head2],
+    [
+        head1,
+        head2
+    ],
     dim=-1
 )
 
-print("\n=== Concatenated Heads ===")
+
+print("\n======================================")
+print("Concatenated Heads")
+print("======================================")
+
 print(concat)
-print("concat shape:", concat.shape)
+
+print(
+    "shape:",
+    concat.shape
+)
 
 
-# --------------------------------------------------
-# 8. Final Linear Projection
-# --------------------------------------------------
+# ==================================================
+# 11. Final Projection W_O
+# ==================================================
 #
-# 논문의 W^O에 해당
+# 여러 head의 representation을 concat한 후
+#
+# W_O를 통해 다시 d_model 차원의
+# representation으로 섞는다.
+#
 #
 # [3, 4]
 # ↓
 # [3, 4]
+# ==================================================
 
 W_O = nn.Linear(
     d_model,
@@ -198,10 +519,26 @@ W_O = nn.Linear(
     bias=False
 )
 
-output = W_O(concat)
+
+print("\n======================================")
+print("W_O")
+print("======================================")
+
+print(W_O.weight)
 
 
-print("\n=== Multi-Head Attention Output ===")
+output = W_O(
+    concat
+)
+
+
+print("\n======================================")
+print("Multi-Head Attention Output")
+print("======================================")
+
 print(output)
 
-print("output shape:", output.shape)
+print(
+    "shape:",
+    output.shape
+)
