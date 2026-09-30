@@ -21,110 +21,124 @@ def read_csv(path):
         encoding="utf-8",
         newline="",
     ) as f:
-        return list(
-            csv.DictReader(f)
-        )
+        return list(csv.DictReader(f))
 
 
 training_rows = read_csv(
-    OUTPUT_DIR
-    / "training_trace.csv"
+    OUTPUT_DIR / "training_trace.csv"
 )
 
 attention_rows = read_csv(
-    OUTPUT_DIR
-    / "attention_trace.csv"
+    OUTPUT_DIR / "attention_trace.csv"
 )
 
 parameter_rows = read_csv(
-    OUTPUT_DIR
-    / "parameter_trace.csv"
+    OUTPUT_DIR / "parameter_trace.csv"
 )
 
-
-# ==================================================
-# 1. Loss vs Step
-# ==================================================
 
 steps = [
     int(row["step"])
     for row in training_rows
 ]
 
-losses = [
-    float(row["loss"])
+
+# ==================================================
+# 1. Probe / Test Loss vs Step
+# ==================================================
+
+probe_losses = [
+    float(row["probe_loss"])
     for row in training_rows
 ]
 
-plt.figure(
-    figsize=(7, 4)
+test_losses = [
+    float(row["test_mean_loss"])
+    for row in training_rows
+]
+
+plt.figure(figsize=(8, 4))
+
+plt.plot(
+    steps,
+    probe_losses,
+    label="Held-out probe",
 )
 
 plt.plot(
     steps,
-    losses,
-    marker="o",
+    test_losses,
+    label="Test mean",
 )
 
-plt.title(
-    "Training Loss vs Step"
-)
-
-plt.xlabel("Step")
+plt.title("Held-out Loss vs Step")
+plt.xlabel("Optimizer Step")
 plt.ylabel("Cross Entropy Loss")
+plt.legend()
 plt.grid()
 
 loss_path = (
     FIGURE_DIR
-    / "01_loss_vs_step.png"
+    / "01_heldout_loss_vs_step.png"
 )
 
 plt.tight_layout()
-plt.savefig(
-    loss_path,
-    dpi=150,
-)
+plt.savefig(loss_path, dpi=150)
 plt.close()
 
 
 # ==================================================
-# 2. Mean GT Probability vs Step
+# 2. Held-out Accuracy / GT Probability
 # ==================================================
 
-mean_gt_probs = [
+probe_gt_probs = [
     float(
-        row["mean_gt_probability"]
+        row[
+            "probe_mean_gt_probability"
+        ]
     )
     for row in training_rows
 ]
 
-plt.figure(
-    figsize=(7, 4)
+test_accuracies = [
+    float(
+        row["test_token_accuracy"]
+    )
+    for row in training_rows
+]
+
+plt.figure(figsize=(8, 4))
+
+plt.plot(
+    steps,
+    probe_gt_probs,
+    label="Probe mean GT probability",
 )
 
 plt.plot(
     steps,
-    mean_gt_probs,
-    marker="o",
+    test_accuracies,
+    label="Test token accuracy",
 )
 
 plt.title(
-    "Mean Ground-Truth Probability vs Step"
+    "Held-out Prediction Quality vs Step"
 )
 
-plt.xlabel("Step")
-plt.ylabel("Mean GT Probability")
+plt.xlabel("Optimizer Step")
+plt.ylabel("Value")
 plt.ylim(0.0, 1.0)
+plt.legend()
 plt.grid()
 
-gt_path = (
+quality_path = (
     FIGURE_DIR
-    / "02_gt_probability_vs_step.png"
+    / "02_heldout_quality_vs_step.png"
 )
 
 plt.tight_layout()
 plt.savefig(
-    gt_path,
+    quality_path,
     dpi=150,
 )
 plt.close()
@@ -132,8 +146,8 @@ plt.close()
 
 # ==================================================
 # 3. Decoder Cross-Attention
-#    Head 1 / 마지막 query가
-#    source token을 보는 weight 변화
+#    Head 1 / probe의 마지막 query가
+#    English source token을 보는 weight 변화
 # ==================================================
 
 cross_rows = [
@@ -154,9 +168,8 @@ last_query_index = max(
 cross_last_rows = [
     row
     for row in cross_rows
-    if int(
-        row["query_index"]
-    ) == last_query_index
+    if int(row["query_index"])
+    == last_query_index
 ]
 
 by_key = defaultdict(list)
@@ -171,9 +184,7 @@ for row in cross_last_rows:
         )
     )
 
-plt.figure(
-    figsize=(8, 5)
-)
+plt.figure(figsize=(8, 5))
 
 for key_token, values in (
     by_key.items()
@@ -195,16 +206,15 @@ for key_token, values in (
     plt.plot(
         x,
         y,
-        marker="o",
         label=key_token,
     )
 
 plt.title(
-    "Decoder Cross-Attention "
-    "(Head 1, Last Query)"
+    "Probe Cross-Attention "
+    "(Head 1, Last Decoder Query)"
 )
 
-plt.xlabel("Step")
+plt.xlabel("Optimizer Step")
 plt.ylabel("Attention Weight")
 plt.ylim(0.0, 1.0)
 plt.legend()
@@ -212,7 +222,7 @@ plt.grid()
 
 attention_path = (
     FIGURE_DIR
-    / "03_cross_attention_vs_step.png"
+    / "03_probe_cross_attention_vs_step.png"
 )
 
 plt.tight_layout()
@@ -224,7 +234,7 @@ plt.close()
 
 
 # ==================================================
-# 4. 대표 W_Q scalar의 변화
+# 4. 대표 W_Q scalar 변화
 # ==================================================
 
 tracked_parameter = (
@@ -253,21 +263,18 @@ parameter_values = [
     for row in tracked_rows
 ]
 
-plt.figure(
-    figsize=(7, 4)
-)
+plt.figure(figsize=(8, 4))
 
 plt.plot(
     parameter_steps,
     parameter_values,
-    marker="o",
 )
 
 plt.title(
     "Selected W_Q[0,0] vs Step"
 )
 
-plt.xlabel("Step")
+plt.xlabel("Optimizer Step")
 plt.ylabel("Parameter Value")
 plt.grid()
 
@@ -293,14 +300,11 @@ gradients = [
     for row in tracked_rows
 ]
 
-plt.figure(
-    figsize=(7, 4)
-)
+plt.figure(figsize=(8, 4))
 
 plt.plot(
     parameter_steps,
     gradients,
-    marker="o",
 )
 
 plt.axhline(
@@ -313,7 +317,7 @@ plt.title(
     "Selected W_Q[0,0] Gradient vs Step"
 )
 
-plt.xlabel("Step")
+plt.xlabel("Optimizer Step")
 plt.ylabel("Gradient")
 plt.grid()
 
@@ -336,7 +340,7 @@ print("=" * 70)
 
 for path in [
     loss_path,
-    gt_path,
+    quality_path,
     attention_path,
     parameter_path,
     gradient_path,
