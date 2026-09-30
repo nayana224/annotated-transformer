@@ -52,6 +52,15 @@ study/
 ├── 04_encoder.py
 ├── 05_decoder.py
 ├── 06_output_loss.py
+├── 07_tokenization_dataset.py
+├── 08_single_training_step.py
+├── 09_training_trace.py
+├── 10_visualize_training.py
+├── trace_utils.py
+├── data/
+│   └── toy_translation.csv
+├── outputs/
+│   └── README.md
 ├── Attention_Is_All_You_Need_Study.ipynb
 └── images/
 ```
@@ -64,9 +73,124 @@ study/
 - [x] 04. Encoder
 - [x] 05. Decoder
 - [x] 06. Output / Loss
+- [x] 07. 실제 문자열 → Tokenization → Token ID → Decoder Input / GT
+- [x] 08. 실제 문장 1개로 Forward → Loss → Backward → Optimizer Step 1회 추적
+- [x] 09. 30 step 반복 학습 + Tensor / Attention / Gradient / Parameter CSV 저장
+- [x] 10. CSV 기반 학습 변화 시각화
 
 실습에서는 `d_model=4`, `num_heads=2`처럼 작은 크기를 사용해
 중간값을 직접 출력하고 계산 흐름을 따라갈 수 있도록 구성합니다.
+
+## End-to-End Training Trace
+
+기존 01~06 실습은 Transformer의 각 블록을 분리해서 확인하는 단계입니다.
+
+07~10에서는 실제 문자열부터 시작해 학습 과정 전체를 연결합니다.
+
+기본 예시:
+
+```text
+Source
+나는 로봇을 좋아한다
+
+Target
+I like robots
+```
+
+데이터는 `study/data/toy_translation.csv`에 있습니다.
+
+### 07. Tokenization / Dataset
+
+```bash
+python study/07_tokenization_dataset.py
+```
+
+다음을 실제 문자열에서 직접 확인합니다.
+
+```text
+Raw String
+→ whitespace tokenization
+→ vocabulary
+→ token ID
+→ Encoder Input
+
+Target
+→ <SOS> + target
+→ Decoder Input
+
+Target
+→ target + <EOS>
+→ Ground Truth
+```
+
+### 08. Single Training Step
+
+```bash
+python study/08_single_training_step.py
+```
+
+한 문장에 대해 정확히 1번:
+
+```text
+Forward
+→ logits / probability
+→ Cross Entropy Loss
+→ backward()
+→ gradient
+→ optimizer.step()
+→ parameter update
+```
+
+를 수행합니다.
+
+대표 `W_Q[0,0]` 값에 대해 update 전 값, gradient, update 후 값을 직접 출력합니다.
+
+### 09. Training Trace
+
+```bash
+python study/09_training_trace.py
+```
+
+같은 예제를 30 step 학습하면서 다음 값을 CSV로 저장합니다.
+
+- loss / accuracy / GT probability
+- forward tensor 전체 element
+- Encoder / Decoder attention weight
+- 모든 learnable parameter의 update 전 값
+- gradient
+- update 후 값
+- parameter delta
+
+생성 파일:
+
+```text
+study/outputs/
+├── training_trace.csv
+├── tensor_trace.csv
+├── attention_trace.csv
+└── parameter_trace.csv
+```
+
+### 10. Visualization
+
+```bash
+python study/10_visualize_training.py
+```
+
+CSV를 읽어서 다음 변화를 그래프로 저장합니다.
+
+- Loss vs Step
+- GT Probability vs Step
+- Cross-Attention vs Step
+- Selected Parameter vs Step
+- Selected Gradient vs Step
+
+```text
+study/outputs/figures/
+```
+
+이번 실습에서는 복잡한 소수점 연산을 손으로 끝까지 계산하지 않고,
+**PyTorch가 실제로 계산한 tensor / gradient / parameter 값을 step별로 관찰하는 것**을 목표로 합니다.
 
 ## Study Environment Setup
 
