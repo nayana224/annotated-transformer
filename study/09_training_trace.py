@@ -7,19 +7,21 @@ import torch.nn as nn
 
 from trace_utils import (
     build_study_objects,
+    load_translation_pairs,
     make_example,
 )
 
 
 HERE = Path(__file__).resolve().parent
-DATA_PATH = HERE / "data" / "toy_translation.csv"
+TRAIN_PATH = HERE / "data" / "en_ko_train.csv"
+TEST_PATH = HERE / "data" / "en_ko_test.csv"
 OUTPUT_DIR = HERE / "outputs"
 
 DEVICE = "cpu"
 SEED = 42
 LEARNING_RATE = 0.05
-STEPS = 30
-SAMPLE_INDEX = 0
+STEPS = 120
+PROBE_TEST_INDEX = 0
 
 
 OUTPUT_DIR.mkdir(
@@ -29,12 +31,12 @@ OUTPUT_DIR.mkdir(
 
 
 (
-    pairs,
+    train_pairs,
     src_vocab,
     tgt_vocab,
     model,
 ) = build_study_objects(
-    DATA_PATH,
+    TRAIN_PATH,
     seed=SEED,
     d_model=8,
     num_heads=2,
@@ -43,12 +45,31 @@ OUTPUT_DIR.mkdir(
     device=DEVICE,
 )
 
-example = make_example(
-    pairs[SAMPLE_INDEX],
-    src_vocab,
-    tgt_vocab,
-    device=DEVICE,
-)
+test_pairs = load_translation_pairs(TEST_PATH)
+
+train_examples = [
+    make_example(
+        pair,
+        src_vocab,
+        tgt_vocab,
+        device=DEVICE,
+    )
+    for pair in train_pairs
+]
+
+test_examples = [
+    make_example(
+        pair,
+        src_vocab,
+        tgt_vocab,
+        device=DEVICE,
+    )
+    for pair in test_pairs
+]
+
+probe_example = test_examples[
+    PROBE_TEST_INDEX
+]
 
 criterion = nn.CrossEntropyLoss()
 
@@ -75,21 +96,13 @@ def index_to_text(index):
 def snapshot_parameters(model):
     snapshot = {}
 
-    for name, parameter in (
-        model.named_parameters()
-    ):
-        data = (
-            parameter
-            .detach()
-            .cpu()
-        )
+    for name, parameter in model.named_parameters():
+        data = parameter.detach().cpu()
 
-        for index in all_indices(
-            data.shape
-        ):
-            snapshot[
-                (name, index)
-            ] = data[index].item()
+        for index in all_indices(data.shape):
+            snapshot[(name, index)] = (
+                data[index].item()
+            )
 
     return snapshot
 
@@ -100,24 +113,14 @@ def append_tensor_trace(
     name,
     tensor,
 ):
-    data = (
-        tensor
-        .detach()
-        .cpu()
-    )
+    data = tensor.detach().cpu()
 
-    for index in all_indices(
-        data.shape
-    ):
+    for index in all_indices(data.shape):
         rows.append({
             "step": step,
             "tensor": name,
-            "index": index_to_text(
-                index
-            ),
-            "value": data[
-                index
-            ].item(),
+            "index": index_to_text(index),
+            "value": data[index].item(),
         })
 
 
@@ -131,22 +134,11 @@ def append_attention_trace(
 ):
     # weights:
     # [num_heads, query_len, key_len]
+    data = weights.detach().cpu()
 
-    data = (
-        weights
-        .detach()
-        .cpu()
-    )
-
-    for head in range(
-        data.shape[0]
-    ):
-        for q in range(
-            data.shape[1]
-        ):
-            for k in range(
-                data.shape[2]
-            ):
+    for head in range(data.shape[0]):
+        for q in range(data.shape[1]):
+            for k in range(data.shape[2]):
                 rows.append({
                     "step": step,
                     "attention_type":
@@ -167,66 +159,26 @@ def append_attention_trace(
                 })
 
 
-training_rows = []
-tensor_rows = []
-attention_rows = []
-parameter_rows = []
-
-
-print("=" * 70)
-print("Training Trace")
-print("=" * 70)
-
-print("Source:")
-print(example["source_text"])
-
-print("\nTarget:")
-print(example["target_text"])
-
-print("\nSteps:", STEPS)
-print(
-    "Learning rate:",
-    LEARNING_RATE,
-)
-
-
-for step in range(STEPS):
-    optimizer.zero_grad()
-
-    parameter_before = (
-        snapshot_parameters(model)
-    )
-
+def evaluate_example(example):
     trace = model(
         example["src_ids"],
-        example[
-            "decoder_input_ids"
-        ],
+        example["decoder_input_ids"],
     )
 
     logits = trace["logits"]
-
-    probabilities = trace[
-        "probabilities"
-    ]
+    probabilities = trace["probabilities"]
 
     loss = criterion(
         logits,
         example["gt_ids"],
     )
 
-    predictions = (
-        probabilities.argmax(
-            dim=-1
-        )
+    predictions = probabilities.argmax(
+        dim=-1
     )
 
-    accuracy = (
-        predictions
-        .eq(example["gt_ids"])
-        .float()
-        .mean()
-        .item()
+    correct = predictions.eq(
+        example["gt_ids"]
     )
 
     positions = torch.arange(
@@ -234,154 +186,152 @@ for step in range(STEPS):
         device=DEVICE,
     )
 
-    gt_probabilities = (
-        probabilities[
-            positions,
-            example["gt_ids"],
-        ]
-    )
+    gt_probabilities = probabilities[
+        positions,
+        example["gt_ids"],
+    ]
 
-    mean_gt_probability = (
-        gt_probabilities
-        .mean()
-        .item()
-    )
-
-    # ----------------------------------------------
-    # Forward tensors
-    # ----------------------------------------------
-
-    forward_tensors = {
-        "src_embedding":
-            trace["src_embedding"],
-        "src_pe":
-            trace["src_pe"],
-        "encoder_input":
-            trace["encoder_input"],
-        "encoder_output":
-            trace["encoder_output"],
-        "tgt_embedding":
-            trace["tgt_embedding"],
-        "tgt_pe":
-            trace["tgt_pe"],
-        "decoder_input":
-            trace["decoder_input"],
-        "decoder_output":
-            trace["decoder_output"],
-        "logits":
-            trace["logits"],
-        "probabilities":
-            trace["probabilities"],
+    return {
+        "trace": trace,
+        "loss": loss,
+        "correct_tokens":
+            int(correct.sum().item()),
+        "total_tokens":
+            len(example["gt_ids"]),
+        "accuracy":
+            correct.float().mean().item(),
+        "gt_probabilities":
+            gt_probabilities,
+        "mean_gt_probability":
+            gt_probabilities.mean().item(),
     }
 
-    for (
-        tensor_name,
-        tensor,
-    ) in forward_tensors.items():
-        append_tensor_trace(
-            tensor_rows,
-            step,
-            tensor_name,
-            tensor,
-        )
 
-    # ----------------------------------------------
-    # Attention weights
-    # ----------------------------------------------
+def evaluate_test_set():
+    total_loss = 0.0
+    total_correct = 0
+    total_tokens = 0
 
-    append_attention_trace(
-        attention_rows,
-        step,
-        "encoder_self",
-        trace[
-            "encoder_attention"
-        ][0],
-        example["src_tokens"],
-        example["src_tokens"],
+    with torch.no_grad():
+        for example in test_examples:
+            result = evaluate_example(example)
+
+            total_loss += result[
+                "loss"
+            ].item()
+
+            total_correct += result[
+                "correct_tokens"
+            ]
+
+            total_tokens += result[
+                "total_tokens"
+            ]
+
+    return {
+        "mean_loss":
+            total_loss / len(test_examples),
+        "token_accuracy":
+            total_correct / total_tokens,
+    }
+
+
+training_rows = []
+tensor_rows = []
+attention_rows = []
+parameter_rows = []
+
+
+print("=" * 78)
+print("EN-KO Training Trace")
+print("=" * 78)
+
+print(f"Train pairs : {len(train_examples)}")
+print(f"Test pairs  : {len(test_examples)}")
+print(f"Steps       : {STEPS}")
+print(f"Learning rate: {LEARNING_RATE}")
+
+print("\nFixed probe test sentence:")
+print(
+    f"{probe_example['source_text']} "
+    f"-> {probe_example['target_text']}"
+)
+
+print(
+    "\n각 optimizer step은 train pair 하나를 순서대로 사용한다."
+)
+
+print(
+    "매 step 뒤에 고정된 test probe와 전체 test set을 "
+    "다시 평가해 변화 과정을 저장한다."
+)
+
+
+for step in range(STEPS):
+    train_index = step % len(
+        train_examples
     )
 
-    append_attention_trace(
-        attention_rows,
-        step,
-        "decoder_masked",
-        trace[
-            "masked_attention"
-        ][0],
-        example[
-            "decoder_input_tokens"
-        ],
-        example[
-            "decoder_input_tokens"
-        ],
-    )
-
-    append_attention_trace(
-        attention_rows,
-        step,
-        "decoder_cross",
-        trace[
-            "cross_attention"
-        ][0],
-        example[
-            "decoder_input_tokens"
-        ],
-        example["src_tokens"],
-    )
+    train_example = train_examples[
+        train_index
+    ]
 
     # ----------------------------------------------
-    # Backward
+    # 1. Train one pair
     # ----------------------------------------------
 
-    loss.backward()
+    optimizer.zero_grad()
+
+    parameter_before = snapshot_parameters(
+        model
+    )
+
+    train_trace = model(
+        train_example["src_ids"],
+        train_example["decoder_input_ids"],
+    )
+
+    train_loss = criterion(
+        train_trace["logits"],
+        train_example["gt_ids"],
+    )
+
+    train_loss.backward()
 
     gradients = {}
 
-    for name, parameter in (
-        model.named_parameters()
-    ):
+    for name, parameter in model.named_parameters():
         if parameter.grad is None:
             continue
 
-        grad = (
-            parameter.grad
-            .detach()
-            .cpu()
-        )
+        grad = parameter.grad.detach().cpu()
 
         for index in all_indices(
             grad.shape
         ):
-            gradients[
-                (name, index)
-            ] = grad[index].item()
-
-    # ----------------------------------------------
-    # Optimizer update
-    # ----------------------------------------------
+            gradients[(name, index)] = (
+                grad[index].item()
+            )
 
     optimizer.step()
 
-    parameter_after = (
-        snapshot_parameters(model)
+    parameter_after = snapshot_parameters(
+        model
     )
 
-    for (
-        key,
-        value_before,
-    ) in parameter_before.items():
-        (
-            parameter_name,
-            index,
-        ) = key
+    for key, value_before in (
+        parameter_before.items()
+    ):
+        parameter_name, index = key
 
         grad = gradients.get(
             key,
             0.0,
         )
 
-        value_after = (
-            parameter_after[key]
-        )
+        value_after = parameter_after[
+            key
+        ]
 
         parameter_rows.append({
             "step": step,
@@ -400,19 +350,130 @@ for step in range(STEPS):
                 - value_before,
         })
 
+    # ----------------------------------------------
+    # 2. Fixed probe after update
+    # ----------------------------------------------
+
+    with torch.no_grad():
+        probe_result = evaluate_example(
+            probe_example
+        )
+
+    probe_trace = probe_result[
+        "trace"
+    ]
+
+    forward_tensors = {
+        "src_embedding":
+            probe_trace["src_embedding"],
+        "src_pe":
+            probe_trace["src_pe"],
+        "encoder_input":
+            probe_trace["encoder_input"],
+        "encoder_output":
+            probe_trace["encoder_output"],
+        "tgt_embedding":
+            probe_trace["tgt_embedding"],
+        "tgt_pe":
+            probe_trace["tgt_pe"],
+        "decoder_input":
+            probe_trace["decoder_input"],
+        "decoder_output":
+            probe_trace["decoder_output"],
+        "logits":
+            probe_trace["logits"],
+        "probabilities":
+            probe_trace["probabilities"],
+    }
+
+    for tensor_name, tensor in (
+        forward_tensors.items()
+    ):
+        append_tensor_trace(
+            tensor_rows,
+            step,
+            tensor_name,
+            tensor,
+        )
+
+    append_attention_trace(
+        attention_rows,
+        step,
+        "encoder_self",
+        probe_trace[
+            "encoder_attention"
+        ][0],
+        probe_example["src_tokens"],
+        probe_example["src_tokens"],
+    )
+
+    append_attention_trace(
+        attention_rows,
+        step,
+        "decoder_masked",
+        probe_trace[
+            "masked_attention"
+        ][0],
+        probe_example[
+            "decoder_input_tokens"
+        ],
+        probe_example[
+            "decoder_input_tokens"
+        ],
+    )
+
+    append_attention_trace(
+        attention_rows,
+        step,
+        "decoder_cross",
+        probe_trace[
+            "cross_attention"
+        ][0],
+        probe_example[
+            "decoder_input_tokens"
+        ],
+        probe_example["src_tokens"],
+    )
+
+    # ----------------------------------------------
+    # 3. Whole test set after update
+    # ----------------------------------------------
+
+    test_result = evaluate_test_set()
+
     training_row = {
         "step": step,
-        "loss": loss.item(),
-        "accuracy": accuracy,
-        "mean_gt_probability":
-            mean_gt_probability,
+        "train_pair_index":
+            train_index,
+        "train_source":
+            train_example["source_text"],
+        "train_target":
+            train_example["target_text"],
+        "train_loss":
+            train_loss.item(),
+        "probe_loss":
+            probe_result["loss"].item(),
+        "probe_accuracy":
+            probe_result["accuracy"],
+        "probe_mean_gt_probability":
+            probe_result[
+                "mean_gt_probability"
+            ],
+        "test_mean_loss":
+            test_result["mean_loss"],
+        "test_token_accuracy":
+            test_result[
+                "token_accuracy"
+            ],
     }
 
     for i, probability in enumerate(
-        gt_probabilities
+        probe_result[
+            "gt_probabilities"
+        ]
     ):
         training_row[
-            f"gt_probability_{i}"
+            f"probe_gt_probability_{i}"
         ] = probability.item()
 
     training_rows.append(
@@ -420,11 +481,14 @@ for step in range(STEPS):
     )
 
     print(
-        f"step={step:02d}  "
-        f"loss={loss.item():.6f}  "
-        f"accuracy={accuracy:.2f}  "
-        f"mean_GT_prob="
-        f"{mean_gt_probability:.6f}"
+        f"step={step:03d}  "
+        f"train={train_index:02d}  "
+        f"train_loss="
+        f"{train_loss.item():.4f}  "
+        f"probe_loss="
+        f"{probe_result['loss'].item():.4f}  "
+        f"test_acc="
+        f"{test_result['token_accuracy']:.3f}"
     )
 
 
@@ -449,13 +513,19 @@ def write_csv(
 
 training_fields = [
     "step",
-    "loss",
-    "accuracy",
-    "mean_gt_probability",
+    "train_pair_index",
+    "train_source",
+    "train_target",
+    "train_loss",
+    "probe_loss",
+    "probe_accuracy",
+    "probe_mean_gt_probability",
+    "test_mean_loss",
+    "test_token_accuracy",
 ] + [
-    f"gt_probability_{i}"
+    f"probe_gt_probability_{i}"
     for i in range(
-        len(example["gt_ids"])
+        len(probe_example["gt_ids"])
     )
 ]
 
@@ -511,9 +581,9 @@ write_csv(
 )
 
 
-print("\n" + "=" * 70)
+print("\n" + "=" * 78)
 print("Saved")
-print("=" * 70)
+print("=" * 78)
 
 for filename in [
     "training_trace.csv",
@@ -521,17 +591,14 @@ for filename in [
     "attention_trace.csv",
     "parameter_trace.csv",
 ]:
-    print(
-        OUTPUT_DIR / filename
-    )
+    print(OUTPUT_DIR / filename)
 
 print(
-    "\nCSV는 모두 step별 값을 "
-    "그대로 저장한다."
+    "\ntraining_trace.csv는 train sample loss뿐 아니라 "
+    "고정 test probe와 전체 test set의 변화를 함께 기록한다."
 )
 
 print(
-    "복잡한 소수점 계산은 "
-    "손으로 풀지 않고 PyTorch의 "
-    "실제 계산값을 관찰한다."
+    "복잡한 소수점 계산은 손으로 전개하지 않고 "
+    "PyTorch의 실제 계산값을 step별로 관찰한다."
 )
