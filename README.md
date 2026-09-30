@@ -17,11 +17,11 @@ Transformer 논문의 핵심 연산을 직접 코드로 확인하기 위한 개�
 Transformer의 전체 데이터 흐름을 작은 tensor와 직접 구현한 코드로 단계별 확인합니다.
 
 ```text
-Token ID
+Raw Sentence Pair
 ↓
-Embedding
+Tokenization / Vocabulary / Token ID
 ↓
-Positional Encoding
+Embedding + Positional Encoding
 ↓
 Scaled Dot-Product Attention
 ↓
@@ -34,10 +34,12 @@ Decoder
 Output Linear / Softmax
 ↓
 Cross Entropy Loss
+↓
+Backward / Gradient / Optimizer Step
 ```
 
 각 단계에서 실제 tensor shape, attention weight, residual connection,
-그리고 loss 계산이 어떻게 이어지는지 직접 확인하는 것이 목표입니다.
+loss, gradient, parameter update가 어떻게 이어지는지 직접 확인하는 것이 목표입니다.
 
 ## Study
 
@@ -58,7 +60,9 @@ study/
 ├── 10_visualize_training.py
 ├── trace_utils.py
 ├── data/
-│   └── toy_translation.csv
+│   ├── toy_translation.csv
+│   ├── en_ko_train.csv
+│   └── en_ko_test.csv
 ├── outputs/
 │   └── README.md
 ├── Attention_Is_All_You_Need_Study.ipynb
@@ -73,13 +77,16 @@ study/
 - [x] 04. Encoder
 - [x] 05. Decoder
 - [x] 06. Output / Loss
-- [x] 07. 실제 문자열 → Tokenization → Token ID → Decoder Input / GT
-- [x] 08. 실제 문장 1개로 Forward → Loss → Backward → Optimizer Step 1회 추적
-- [x] 09. 30 step 반복 학습 + Tensor / Attention / Gradient / Parameter CSV 저장
-- [x] 10. CSV 기반 학습 변화 시각화
+- [x] 07. 실제 EN-KO 문자열 → Tokenization → Token ID → Decoder Input / GT
+- [x] 08. 실제 EN-KO 문장 1개로 Forward → Loss → Backward → Optimizer Step 1회 추적
+- [x] 09. 40개 train pair를 순회하며 120 optimizer step 학습 + Tensor / Attention / Gradient / Parameter CSV 저장
+- [x] 10. held-out test probe / 전체 test set 변화 시각화
 
-실습에서는 `d_model=4`, `num_heads=2`처럼 작은 크기를 사용해
-중간값을 직접 출력하고 계산 흐름을 따라갈 수 있도록 구성합니다.
+01~06은 `d_model=4`, `num_heads=2`처럼 아주 작은 크기를 사용해
+중간값을 직접 출력하고 계산 흐름을 따라갑니다.
+
+07~10의 end-to-end trace에서는 실제 문자열과 더 다양한 vocabulary를 다루기 위해
+`d_model=8`, `num_heads=2`의 작은 Transformer를 사용합니다.
 
 ## End-to-End Training Trace
 
@@ -87,17 +94,32 @@ study/
 
 07~10에서는 실제 문자열부터 시작해 학습 과정 전체를 연결합니다.
 
-기본 예시:
+> 이 데이터는 WMT14 원본 데이터가 아닙니다.  
+> WMT의 **parallel sentence pair → tokenization → encoder-decoder translation** 구조를
+> 눈으로 추적하기 쉽도록 만든 소규모 English→Korean 학습용 데이터입니다.
+
+### Dataset
 
 ```text
-Source
-나는 로봇을 좋아한다
-
-Target
-I like robots
+study/data/
+├── en_ko_train.csv   # 40 sentence pairs
+└── en_ko_test.csv    # 10 held-out sentence pairs
 ```
 
-데이터는 `study/data/toy_translation.csv`에 있습니다.
+예시:
+
+```text
+Source (English)
+I like robots
+
+Target (Korean)
+나는 로봇을 좋아한다
+```
+
+test set은 train에 동일한 완성 문장으로 넣지 않은 조합으로 구성합니다.
+대신 현재 whitespace-tokenizer 실습에서 `<UNK>` 영향보다
+**학습된 token 조합이 새로운 문장에 어떻게 적용되는지** 보기 위해,
+test 문장을 구성하는 token은 train vocabulary 안에 있도록 구성했습니다.
 
 ### 07. Tokenization / Dataset
 
@@ -108,20 +130,24 @@ python study/07_tokenization_dataset.py
 다음을 실제 문자열에서 직접 확인합니다.
 
 ```text
-Raw String
+English Source String
 → whitespace tokenization
-→ vocabulary
-→ token ID
+→ source vocabulary
+→ source token IDs
 → Encoder Input
 
-Target
-→ <SOS> + target
+Korean Target String
+→ whitespace tokenization
+
+<SOS> + Target
 → Decoder Input
 
-Target
-→ target + <EOS>
+Target + <EOS>
 → Ground Truth
 ```
+
+현재는 내부 흐름을 완전히 보이게 하기 위해 직접 만든 whitespace tokenizer를 사용합니다.
+추후 BPE / SentencePiece 실습으로 확장할 수 있습니다.
 
 ### 08. Single Training Step
 
@@ -129,7 +155,7 @@ Target
 python study/08_single_training_step.py
 ```
 
-한 문장에 대해 정확히 1번:
+실제 EN-KO train pair 하나에 대해 정확히 1번:
 
 ```text
 Forward
@@ -143,7 +169,18 @@ Forward
 
 를 수행합니다.
 
-대표 `W_Q[0,0]` 값에 대해 update 전 값, gradient, update 후 값을 직접 출력합니다.
+대표 `W_Q[0,0]` 값에 대해 다음 값을 직접 출력합니다.
+
+```text
+weight before
+gradient
+learning rate
+weight after
+delta weight
+```
+
+복잡한 소수점 계산을 손으로 전개하는 대신,
+PyTorch가 계산한 실제 값을 읽으면서 각 값의 역할과 흐름을 확인합니다.
 
 ### 09. Training Trace
 
@@ -151,15 +188,30 @@ Forward
 python study/09_training_trace.py
 ```
 
-같은 예제를 30 step 학습하면서 다음 값을 CSV로 저장합니다.
+40개의 train pair를 순서대로 반복해서 사용하며 기본 120 optimizer step을 수행합니다.
 
-- loss / accuracy / GT probability
-- forward tensor 전체 element
-- Encoder / Decoder attention weight
-- 모든 learnable parameter의 update 전 값
-- gradient
-- update 후 값
-- parameter delta
+동시에 train에 없는 고정 test 문장 하나를 probe로 정합니다.
+
+```text
+The teacher likes robots
+→ 선생님은 로봇을 좋아한다
+```
+
+각 update 뒤에 이 probe와 전체 10개 test set을 다시 평가합니다.
+
+따라서 단순히 하나의 문장을 반복해서 외우는 과정만 보는 것이 아니라,
+
+```text
+training sample update
+↓
+parameter 변화
+↓
+held-out probe 변화
+↓
+전체 test set 변화
+```
+
+를 함께 관찰할 수 있습니다.
 
 생성 파일:
 
@@ -171,6 +223,18 @@ study/outputs/
 └── parameter_trace.csv
 ```
 
+저장 내용:
+
+- 현재 train pair와 train loss
+- held-out probe loss / accuracy / GT probability
+- 전체 test mean loss / token accuracy
+- probe의 forward tensor 전체 element
+- probe의 Encoder / Decoder attention weight
+- 모든 learnable parameter의 update 전 값
+- gradient
+- update 후 값
+- parameter delta
+
 ### 10. Visualization
 
 ```bash
@@ -179,9 +243,9 @@ python study/10_visualize_training.py
 
 CSV를 읽어서 다음 변화를 그래프로 저장합니다.
 
-- Loss vs Step
-- GT Probability vs Step
-- Cross-Attention vs Step
+- Held-out Probe / Test Loss vs Step
+- Probe GT Probability / Test Token Accuracy vs Step
+- Probe Cross-Attention vs Step
 - Selected Parameter vs Step
 - Selected Gradient vs Step
 
@@ -189,8 +253,8 @@ CSV를 읽어서 다음 변화를 그래프로 저장합니다.
 study/outputs/figures/
 ```
 
-이번 실습에서는 복잡한 소수점 연산을 손으로 끝까지 계산하지 않고,
-**PyTorch가 실제로 계산한 tensor / gradient / parameter 값을 step별로 관찰하는 것**을 목표로 합니다.
+Attention weight는 사람이 정한 언어학적 의미로 단정하지 않고,
+**같은 query/key 위치의 weight가 학습 중 실제로 어떻게 변했는지**를 관찰하는 값으로 사용합니다.
 
 ## Study Environment Setup
 
@@ -229,8 +293,8 @@ jupyter notebook study/Attention_Is_All_You_Need_Study.ipynb
 - 개인 학습 코드는 가능한 한 `study/` 아래에서만 작성합니다.
 - 중간 tensor와 shape을 직접 출력해 연산 흐름을 확인합니다.
 - 필요할 때 `torch.manual_seed(42)`를 사용해 결과를 재현합니다.
+- 복잡한 소수점 연산 자체보다 tensor의 의미와 data flow를 추적합니다.
 - `.py` 파일은 단계별 실습 기록, notebook은 전체 흐름 통합 확인용으로 사용합니다.
-
 
 ---
 
