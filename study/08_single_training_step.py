@@ -11,7 +11,7 @@ from trace_utils import (
 
 
 HERE = Path(__file__).resolve().parent
-DATA_PATH = HERE / "data" / "toy_translation.csv"
+TRAIN_PATH = HERE / "data" / "en_ko_train.csv"
 
 DEVICE = "cpu"
 SEED = 42
@@ -20,12 +20,12 @@ SAMPLE_INDEX = 0
 
 
 (
-    pairs,
+    train_pairs,
     src_vocab,
     tgt_vocab,
     model,
 ) = build_study_objects(
-    DATA_PATH,
+    TRAIN_PATH,
     seed=SEED,
     d_model=8,
     num_heads=2,
@@ -35,15 +35,13 @@ SAMPLE_INDEX = 0
 )
 
 example = make_example(
-    pairs[SAMPLE_INDEX],
+    train_pairs[SAMPLE_INDEX],
     src_vocab,
     tgt_vocab,
     device=DEVICE,
 )
 
-id_to_target = invert_vocab(
-    tgt_vocab
-)
+id_to_target = invert_vocab(tgt_vocab)
 
 criterion = nn.CrossEntropyLoss()
 
@@ -54,7 +52,7 @@ optimizer = torch.optim.SGD(
 
 
 print("=" * 70)
-print("Actual Input / Ground Truth")
+print("Actual English -> Korean Input / Ground Truth")
 print("=" * 70)
 
 print("Source text:")
@@ -70,14 +68,10 @@ print("\nTarget text:")
 print(example["target_text"])
 
 print("\nDecoder input tokens:")
-print(
-    example["decoder_input_tokens"]
-)
+print(example["decoder_input_tokens"])
 
 print("\nDecoder input IDs:")
-print(
-    example["decoder_input_ids"]
-)
+print(example["decoder_input_ids"])
 
 print("\nGT tokens:")
 print(example["gt_tokens"])
@@ -85,11 +79,6 @@ print(example["gt_tokens"])
 print("\nGT IDs:")
 print(example["gt_ids"])
 
-
-# ==================================================
-# 대표 parameter 하나를 정해서
-# before -> gradient -> after를 직접 본다.
-# ==================================================
 
 tracked_weight = (
     model
@@ -99,11 +88,7 @@ tracked_weight = (
     .weight
 )
 
-weight_before = (
-    tracked_weight[0, 0]
-    .detach()
-    .item()
-)
+weight_before = tracked_weight[0, 0].detach().item()
 
 
 # ==================================================
@@ -118,30 +103,22 @@ trace = model(
 )
 
 logits = trace["logits"]
-probabilities = trace[
-    "probabilities"
-]
+probabilities = trace["probabilities"]
 
 loss = criterion(
     logits,
     example["gt_ids"],
 )
 
-pred_ids = probabilities.argmax(
-    dim=-1
-)
+pred_ids = probabilities.argmax(dim=-1)
 
 pred_tokens = [
-    id_to_target[
-        token_id.item()
-    ]
+    id_to_target[token_id.item()]
     for token_id in pred_ids
 ]
 
 gt_probabilities = probabilities[
-    torch.arange(
-        len(example["gt_ids"])
-    ),
+    torch.arange(len(example["gt_ids"])),
     example["gt_ids"],
 ]
 
@@ -152,20 +129,14 @@ print("=" * 70)
 
 print("Encoder output:")
 print(trace["encoder_output"])
-print(
-    "shape:",
-    trace["encoder_output"].shape,
-)
+print("shape:", trace["encoder_output"].shape)
 
 print("\nCausal mask:")
 print(trace["causal_mask"])
 
 print("\nDecoder output:")
 print(trace["decoder_output"])
-print(
-    "shape:",
-    trace["decoder_output"].shape,
-)
+print("shape:", trace["decoder_output"].shape)
 
 print("\nLogits:")
 print(logits)
@@ -179,10 +150,7 @@ for token, prob in zip(
     example["gt_tokens"],
     gt_probabilities,
 ):
-    print(
-        f"P({token:>6}) = "
-        f"{prob.item():.6f}"
-    )
+    print(f"P({token:>8}) = {prob.item():.6f}")
 
 print("\nPrediction:")
 print(pred_tokens)
@@ -198,29 +166,18 @@ print(loss.item())
 # 2. Attention
 # ==================================================
 
-masked_weights = (
-    trace["masked_attention"][0]
-)
-
-cross_weights = (
-    trace["cross_attention"][0]
-)
+masked_weights = trace["masked_attention"][0]
+cross_weights = trace["cross_attention"][0]
 
 
 print("\n" + "=" * 70)
 print("2. Attention Weights")
 print("=" * 70)
 
-print(
-    "Masked Self-Attention "
-    "- Layer 1 / Head 1"
-)
+print("Masked Self-Attention - Layer 1 / Head 1")
 print(masked_weights[0])
 
-print(
-    "\nCross-Attention "
-    "- Layer 1 / Head 1"
-)
+print("\nCross-Attention - Layer 1 / Head 1")
 print(cross_weights[0])
 
 
@@ -230,17 +187,12 @@ print(cross_weights[0])
 
 loss.backward()
 
-tracked_grad = (
-    tracked_weight.grad[0, 0]
-    .detach()
-    .item()
-)
+tracked_grad = tracked_weight.grad[0, 0].detach().item()
 
 
 def grad_norm(parameter):
     if parameter.grad is None:
         return 0.0
-
     return parameter.grad.norm().item()
 
 
@@ -249,32 +201,20 @@ print("3. Backward")
 print("=" * 70)
 
 print(
-    "Tracked parameter:"
-)
-
-print(
-    "decoder Layer 1 / "
-    "masked self-attention / "
+    "Tracked parameter:\n"
+    "decoder Layer 1 / masked self-attention / "
     "Head 1 / W_Q[0,0]"
 )
 
-print(
-    f"weight before = "
-    f"{weight_before:.8f}"
-)
-
-print(
-    f"gradient      = "
-    f"{tracked_grad:.8f}"
-)
+print(f"weight before = {weight_before:.8f}")
+print(f"gradient      = {tracked_grad:.8f}")
 
 print("\nGradient norms:")
 
 print(
     "masked W_Q:",
     grad_norm(
-        model
-        .decoder_layers[0]
+        model.decoder_layers[0]
         .masked_self_attention
         .W_Q[0]
         .weight
@@ -284,8 +224,7 @@ print(
 print(
     "masked W_K:",
     grad_norm(
-        model
-        .decoder_layers[0]
+        model.decoder_layers[0]
         .masked_self_attention
         .W_K[0]
         .weight
@@ -295,8 +234,7 @@ print(
 print(
     "masked W_V:",
     grad_norm(
-        model
-        .decoder_layers[0]
+        model.decoder_layers[0]
         .masked_self_attention
         .W_V[0]
         .weight
@@ -306,8 +244,7 @@ print(
 print(
     "cross W_Q:",
     grad_norm(
-        model
-        .decoder_layers[0]
+        model.decoder_layers[0]
         .cross_attention
         .W_Q[0]
         .weight
@@ -316,9 +253,7 @@ print(
 
 print(
     "output_linear:",
-    grad_norm(
-        model.output_linear.weight
-    ),
+    grad_norm(model.output_linear.weight),
 )
 
 
@@ -328,56 +263,28 @@ print(
 
 optimizer.step()
 
-weight_after = (
-    tracked_weight[0, 0]
-    .detach()
-    .item()
-)
-
-delta = (
-    weight_after
-    - weight_before
-)
+weight_after = tracked_weight[0, 0].detach().item()
+delta = weight_after - weight_before
 
 
 print("\n" + "=" * 70)
 print("4. Optimizer Step")
 print("=" * 70)
 
-print(
-    f"weight before = "
-    f"{weight_before:.8f}"
-)
-
-print(
-    f"gradient      = "
-    f"{tracked_grad:.8f}"
-)
-
-print(
-    f"learning rate = "
-    f"{LEARNING_RATE}"
-)
-
-print(
-    f"weight after  = "
-    f"{weight_after:.8f}"
-)
-
-print(
-    f"delta weight  = "
-    f"{delta:.8f}"
-)
+print(f"weight before = {weight_before:.8f}")
+print(f"gradient      = {tracked_grad:.8f}")
+print(f"learning rate = {LEARNING_RATE}")
+print(f"weight after  = {weight_after:.8f}")
+print(f"delta weight  = {delta:.8f}")
 
 print(
     "\nSGD에서는 대략 "
-    "weight_after = "
-    "weight_before - lr * gradient"
+    "weight_after = weight_before - lr * gradient"
 )
 
 
 # ==================================================
-# 5. Update 후 Forward를 한 번 더 확인
+# 5. Update 후 Forward를 다시 확인
 # ==================================================
 
 with torch.no_grad():
@@ -396,22 +303,11 @@ print("\n" + "=" * 70)
 print("5. Loss Before / After One Update")
 print("=" * 70)
 
-print(
-    f"before: {loss.item():.6f}"
-)
+print(f"before: {loss.item():.6f}")
+print(f"after : {loss_after.item():.6f}")
 
 print(
-    f"after : {loss_after.item():.6f}"
-)
-
-print(
-    "\n주의: 한 step만으로 loss가 "
-    "항상 크게 감소할 필요는 없다."
-)
-
-print(
-    "이번 실습의 목적은 "
-    "forward -> loss -> backward -> "
-    "gradient -> parameter update를 "
-    "실제 값으로 연결하는 것이다."
+    "\n이번 파일의 목적은 실제 EN-KO sentence pair를 사용해 "
+    "forward -> loss -> backward -> gradient -> "
+    "parameter update를 한 번 끝까지 연결하는 것이다."
 )
