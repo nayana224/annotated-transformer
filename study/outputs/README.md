@@ -1,6 +1,6 @@
 # Training Trace Outputs
 
-`09_training_trace.py`를 실행하면 이 디렉터리에 EN-KO 학습 과정의 실제 값을 CSV로 저장합니다.
+`study/training/03_training_trace.py`를 실행하면 이 디렉터리에 EN-KO 학습 과정의 실제 값을 CSV로 저장합니다.
 
 학습은 40개의 train pair를 순회하면서 진행하고,
 매 optimizer step 뒤에 train에 없는 고정 test probe와 전체 test set을 다시 평가합니다.
@@ -11,6 +11,8 @@
 The teacher likes robots
 → 선생님은 로봇을 좋아한다
 ```
+
+CSV files are written to `study/outputs/csv/`.
 
 ## Files
 
@@ -83,7 +85,7 @@ step, parameter, index, value_before, gradient, value_after, delta
 
 ## Figures
 
-`10_visualize_training.py`를 실행하면 `outputs/figures/` 아래에 다음 그래프를 생성합니다.
+`study/training/04_visualize_training.py`를 실행하면 `study/outputs/figures/` 아래에 다음 그래프를 생성합니다.
 
 - Held-out Probe / Test Loss vs Step
 - Probe GT Probability / Test Token Accuracy vs Step
