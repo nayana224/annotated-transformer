@@ -207,6 +207,44 @@ python study/training/04_visualize_training.py
 
 그래프는 `outputs/figures/`에 저장됩니다.
 
+## Code Style for Study
+
+이 저장소의 `study/src/`와 `study/training/` 코드는 짧게 쓰는 것보다 **한 줄씩 따라가기 쉬운 것**을 우선합니다.
+
+가능하면 다음처럼 풀어서 작성합니다.
+
+```text
+사용
+- 일반 for 문
+- 일반 if 문
+- 중간 변수
+- append()
+- 여러 줄 함수 호출
+
+당분간 피함
+- list comprehension
+- dict comprehension
+- lambda
+- 한 줄에 여러 단계가 섞인 축약 표현
+```
+
+예를 들어:
+
+```python
+# 축약형
+ids = [vocab[token] for token in tokens]
+
+# 학습용 형태
+ids = []
+
+for token in tokens:
+    token_id = vocab[token]
+    ids.append(token_id)
+```
+
+Transformer 자체의 연산을 이해하는 것이 목적이므로,
+Python 문법 때문에 data flow가 가려지지 않도록 합니다.
+
 ## Why src/ Is Separated
 
 기존 `trace_utils.py`에는 tokenization, dataset, positional encoding,
