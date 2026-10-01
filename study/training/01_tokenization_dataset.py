@@ -40,15 +40,25 @@ def print_vocab(title, vocab):
 train_pairs = load_translation_pairs(TRAIN_PATH)
 test_pairs = load_translation_pairs(TEST_PATH)
 
-src_vocab = build_vocab([
-    pair["source"]
-    for pair in train_pairs
-])
+source_sentences = []
+target_sentences = []
 
-tgt_vocab = build_vocab([
-    pair["target"]
-    for pair in train_pairs
-])
+for pair in train_pairs:
+    source_sentences.append(
+        pair["source"]
+    )
+
+    target_sentences.append(
+        pair["target"]
+    )
+
+src_vocab = build_vocab(
+    source_sentences
+)
+
+tgt_vocab = build_vocab(
+    target_sentences
+)
 
 
 print("=" * 70)
