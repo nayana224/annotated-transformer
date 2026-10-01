@@ -45,7 +45,6 @@ study/
 │   └── tracing.py
 │
 ├── data/
-│   ├── toy_translation.csv
 │   ├── en_ko_train.csv
 │   └── en_ko_test.csv
 │
