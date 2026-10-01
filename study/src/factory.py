@@ -16,16 +16,29 @@ def build_study_objects(
 ):
     torch.manual_seed(seed)
 
-    pairs = load_translation_pairs(csv_path)
+    pairs = load_translation_pairs(
+        csv_path
+    )
 
-    src_vocab = build_vocab([
-        pair["source"]
-        for pair in pairs
-    ])
-    tgt_vocab = build_vocab([
-        pair["target"]
-        for pair in pairs
-    ])
+    source_sentences = []
+    target_sentences = []
+
+    for pair in pairs:
+        source_sentences.append(
+            pair["source"]
+        )
+
+        target_sentences.append(
+            pair["target"]
+        )
+
+    src_vocab = build_vocab(
+        source_sentences
+    )
+
+    tgt_vocab = build_vocab(
+        target_sentences
+    )
 
     model = TinyTransformer(
         src_vocab_size=len(src_vocab),
@@ -34,6 +47,13 @@ def build_study_objects(
         num_heads=num_heads,
         d_ff=d_ff,
         num_layers=num_layers,
-    ).to(device)
+    )
 
-    return pairs, src_vocab, tgt_vocab, model
+    model = model.to(device)
+
+    return (
+        pairs,
+        src_vocab,
+        tgt_vocab,
+        model,
+    )
