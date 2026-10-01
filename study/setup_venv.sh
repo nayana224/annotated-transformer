@@ -50,4 +50,4 @@ echo "Activate later with:"
 echo "  source study/.venv/bin/activate"
 echo
 echo "Run the integrated notebook with:"
-echo "  jupyter notebook study/Attention_Is_All_You_Need_Study.ipynb"
+echo "  jupyter notebook study/notebooks/Attention_Is_All_You_Need_Study.ipynb"
