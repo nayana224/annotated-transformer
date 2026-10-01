@@ -18,16 +18,24 @@ TRAIN_PATH = STUDY_DIR / "data" / "en_ko_train.csv"
 TEST_PATH = STUDY_DIR / "data" / "en_ko_test.csv"
 
 
-def print_vocab(title, vocab):
+def print_section(title):
     print("\n" + "=" * 70)
     print(title)
     print("=" * 70)
+
+
+def print_vocab(title, vocab):
+    print_section(title)
 
     id_to_token = invert_vocab(vocab)
 
     for index in range(len(id_to_token)):
         print(f"{index:>2} -> {id_to_token[index]}")
 
+
+# ==================================================
+# 0. Load parallel dataset
+# ==================================================
 
 train_pairs = load_translation_pairs(TRAIN_PATH)
 test_pairs = load_translation_pairs(TEST_PATH)
@@ -64,7 +72,7 @@ print_vocab("Target Vocabulary (Korean)", tgt_vocab)
 
 
 # ==================================================
-# Train sample 하나를 실제 문자열부터 끝까지 추적한다.
+# 1. Pick one train pair
 # ==================================================
 
 sample = train_pairs[0]
@@ -73,62 +81,85 @@ source_text = sample["source"]
 target_text = sample["target"]
 
 
-print("\n" + "=" * 70)
-print("Raw Source / Target")
-print("=" * 70)
+print_section("1. Raw Parallel Sentence Pair")
 
-print("Source:")
+print("English source:")
 print(source_text)
 
-print("\nTarget:")
+print("\nKorean target:")
 print(target_text)
 
 
 # ==================================================
-# 1. Tokenization
+# 2. Tokenization
 # ==================================================
 
 source_tokens = whitespace_tokenize(source_text)
 target_tokens = whitespace_tokenize(target_text)
 
 
-print("\n" + "=" * 70)
-print("1. Tokenization")
-print("=" * 70)
+print_section("2. Whitespace Tokenization")
 
-print("Source tokens:")
+print("English source tokens:")
 print(source_tokens)
 
-print("\nTarget tokens:")
+print("\nKorean target tokens:")
 print(target_tokens)
 
 
 # ==================================================
-# 2. Source Encoding
+# 3. Source branch
+#
+# English source
+# -> tokenize
+# -> + <EOS>
+# -> vocabulary lookup
+# -> Encoder Input IDs
 # ==================================================
 
 (
-    source_tokens_with_eos,
-    source_ids,
+    encoder_input_tokens,
+    encoder_input_ids,
 ) = encode_source(
     source_text,
     src_vocab,
 )
 
 
-print("\n" + "=" * 70)
-print("2. Encoder Input")
-print("=" * 70)
+print_section("3. Source Branch -> Encoder Input")
 
-print("Tokens:")
-print(source_tokens_with_eos)
+print("Raw English:")
+print(source_text)
 
-print("\nToken IDs:")
-print(source_ids)
+print("\nTokenized:")
+print(source_tokens)
+
+print("\nAdd <EOS>:")
+print(encoder_input_tokens)
+
+print("\nVocabulary lookup -> Encoder Input IDs:")
+print(encoder_input_ids)
+
+print("\nFlow:")
+print(
+    "English Source"
+    " -> Tokenization"
+    " -> + <EOS>"
+    " -> Vocabulary Lookup"
+    " -> Encoder Input IDs"
+)
 
 
 # ==================================================
-# 3. Target Encoding
+# 4. Target branch
+#
+# Korean target에서 두 갈래가 만들어진다.
+#
+# A) Decoder Input
+#    <SOS> + target
+#
+# B) Ground Truth
+#    target + <EOS>
 # ==================================================
 
 (
@@ -142,30 +173,40 @@ print(source_ids)
 )
 
 
-print("\n" + "=" * 70)
-print("3. Decoder Input / Ground Truth")
-print("=" * 70)
+print_section("4. Target Branch -> Decoder Input / GT")
 
-print("Decoder input tokens:")
+print("Raw Korean:")
+print(target_text)
+
+print("\nTokenized:")
+print(target_tokens)
+
+print("\nA) Decoder Input")
+print("Add <SOS> at front:")
 print(decoder_input_tokens)
 
-print("\nDecoder input IDs:")
+print("Vocabulary lookup -> Decoder Input IDs:")
 print(decoder_input_ids)
 
-print("\nGT tokens:")
+print("\nB) Ground Truth")
+print("Add <EOS> at end:")
 print(gt_tokens)
 
-print("\nGT IDs:")
+print("Vocabulary lookup -> GT IDs:")
 print(gt_ids)
 
 
 # ==================================================
-# 4. Position-by-position next-token task
+# 5. Shifted target / next-token prediction
 # ==================================================
 
-print("\n" + "=" * 70)
-print("4. Next-token Prediction Pairs")
-print("=" * 70)
+print_section("5. Shifted Target -> Next-token Prediction")
+
+print(
+    "Decoder Input and GT are shifted by one token."
+)
+
+print()
 
 for i in range(len(gt_tokens)):
     visible_prefix = decoder_input_tokens[: i + 1]
@@ -173,17 +214,17 @@ for i in range(len(gt_tokens)):
     print(
         f"position {i}: "
         f"{visible_prefix} "
-        f"-> GT = {gt_tokens[i]}"
+        f"-> predict {gt_tokens[i]}"
     )
 
 
 # ==================================================
-# 5. Test pair는 Train vocab으로 encode되는지 확인
+# 6. Held-out test pair
 # ==================================================
 
 test_sample = test_pairs[0]
 
-test_src_tokens, test_src_ids = encode_source(
+test_encoder_tokens, test_encoder_ids = encode_source(
     test_sample["source"],
     src_vocab,
 )
@@ -199,21 +240,19 @@ test_src_tokens, test_src_ids = encode_source(
 )
 
 
-print("\n" + "=" * 70)
-print("5. Unseen Sentence Combination")
-print("=" * 70)
+print_section("6. Held-out Test Sentence")
 
-print("Test source:")
+print("English source:")
 print(test_sample["source"])
 
-print("\nTest target:")
+print("\nKorean target:")
 print(test_sample["target"])
 
-print("\nSource tokens / IDs:")
-print(test_src_tokens)
-print(test_src_ids)
+print("\nEncoder Input:")
+print(test_encoder_tokens)
+print(test_encoder_ids)
 
-print("\nDecoder input:")
+print("\nDecoder Input:")
 print(test_decoder_tokens)
 print(test_decoder_ids)
 
@@ -222,24 +261,66 @@ print(test_gt_tokens)
 print(test_gt_ids)
 
 print(
-    "\n이 test 문장은 train에 동일 문장으로 존재하지 않는다. "
-    "하지만 구성 token은 train vocabulary 안에 있도록 만들었다."
+    "\n이 test 문장은 train에 동일한 완성 문장으로 존재하지 않는다. "
+    "하지만 현재 실습에서는 구성 token이 train vocabulary 안에 있도록 만들었다."
 )
 
 
-print("\n" + "=" * 70)
-print("Summary")
-print("=" * 70)
+# ==================================================
+# 7. Final summary
+# ==================================================
+
+print_section("7. Final Data Flow Summary")
 
 print(
-    "Raw English / Korean sentence pair"
-    " -> whitespace tokenization"
-    " -> vocabulary"
-    " -> token ID"
-    " -> Encoder / Decoder Input + GT"
+    """
+[Source branch]
+
+English Source
+"I like robots"
+    ↓
+Whitespace Tokenization
+["I", "like", "robots"]
+    ↓
++ <EOS>
+["I", "like", "robots", "<EOS>"]
+    ↓
+Vocabulary Lookup
+    ↓
+Encoder Input IDs
+
+
+[Target branch]
+
+Korean Target
+"나는 로봇을 좋아한다"
+    ↓
+Whitespace Tokenization
+["나는", "로봇을", "좋아한다"]
+    ↓
+    ├─────────────────────────────┐
+    ↓                             ↓
++ <SOS> at front              + <EOS> at end
+    ↓                             ↓
+Decoder Input                    Ground Truth
+    ↓                             ↓
+Decoder Input IDs                 GT IDs
+"""
+)
+
+print("Concrete example:")
+
+print(
+    f"Encoder Input : {encoder_input_tokens}"
+)
+print(
+    f"Decoder Input : {decoder_input_tokens}"
+)
+print(
+    f"GT            : {gt_tokens}"
 )
 
 print(
-    "\n이번 단계는 WMT식 parallel translation 구조를 "
-    "아주 작은 EN-KO 데이터로 재현한다."
+    "\n핵심: Source는 Encoder로 들어가고, "
+    "Target은 Decoder Input과 GT 두 갈래로 나뉜다."
 )
