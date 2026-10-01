@@ -82,7 +82,7 @@ print_vocab("Target Vocabulary (Korean)", tgt_vocab)
 
 
 # ==================================================
-# 1. Pick one train pair
+# 1. Pick one train pair (example sentence)
 # ==================================================
 
 sample = train_pairs[0]
@@ -101,7 +101,7 @@ print(target_text)
 
 
 # ==================================================
-# 2. Tokenization
+# 2. Tokenization (example sentence)
 # ==================================================
 
 source_tokens = whitespace_tokenize(source_text)
@@ -118,7 +118,7 @@ print(target_tokens)
 
 
 # ==================================================
-# 3. Source branch
+# 3. Source branch (example sentence)
 #
 # English source
 # -> tokenize
@@ -161,7 +161,7 @@ print(
 
 
 # ==================================================
-# 4. Target branch
+# 4. Target branch (example sentence)
 #
 # Korean target에서 두 갈래가 만들어진다.
 #
