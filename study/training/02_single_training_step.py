@@ -113,10 +113,17 @@ loss = criterion(
 
 pred_ids = probabilities.argmax(dim=-1)
 
-pred_tokens = [
-    id_to_target[token_id.item()]
-    for token_id in pred_ids
-]
+pred_tokens = []
+
+for token_id in pred_ids:
+    token_id_number = token_id.item()
+    token = id_to_target[
+        token_id_number
+    ]
+
+    pred_tokens.append(
+        token
+    )
 
 gt_probabilities = probabilities[
     torch.arange(len(example["gt_ids"])),
