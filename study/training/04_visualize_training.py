@@ -1,5 +1,4 @@
 import csv
-from collections import defaultdict
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -21,7 +20,16 @@ def read_csv(path):
         encoding="utf-8",
         newline="",
     ) as f:
-        return list(csv.DictReader(f))
+        reader = csv.DictReader(f)
+
+        rows = []
+
+        for row in reader:
+            rows.append(
+                row
+            )
+
+        return rows
 
 
 training_rows = read_csv(
@@ -219,16 +227,29 @@ for row in cross_rows:
             row
         )
 
-by_key = defaultdict(list)
+by_key = {}
 
 for row in cross_last_rows:
-    by_key[
-        row["key_token"]
-    ].append(
-        (
-            int(row["step"]),
-            float(row["weight"]),
-        )
+    key_token = row["key_token"]
+
+    if key_token not in by_key:
+        by_key[key_token] = []
+
+    step = int(
+        row["step"]
+    )
+
+    weight = float(
+        row["weight"]
+    )
+
+    step_and_weight = (
+        step,
+        weight,
+    )
+
+    by_key[key_token].append(
+        step_and_weight
     )
 
 plt.figure(figsize=(8, 5))
