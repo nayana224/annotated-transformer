@@ -37,25 +37,41 @@ parameter_rows = read_csv(
 )
 
 
-steps = [
-    int(row["step"])
-    for row in training_rows
-]
+steps = []
+
+for row in training_rows:
+    step = int(
+        row["step"]
+    )
+
+    steps.append(
+        step
+    )
 
 
 # ==================================================
 # 1. Probe / Test Loss vs Step
 # ==================================================
 
-probe_losses = [
-    float(row["probe_loss"])
-    for row in training_rows
-]
+probe_losses = []
+test_losses = []
 
-test_losses = [
-    float(row["test_mean_loss"])
-    for row in training_rows
-]
+for row in training_rows:
+    probe_loss = float(
+        row["probe_loss"]
+    )
+
+    test_loss = float(
+        row["test_mean_loss"]
+    )
+
+    probe_losses.append(
+        probe_loss
+    )
+
+    test_losses.append(
+        test_loss
+    )
 
 plt.figure(figsize=(8, 4))
 
@@ -91,21 +107,27 @@ plt.close()
 # 2. Held-out Accuracy / GT Probability
 # ==================================================
 
-probe_gt_probs = [
-    float(
+probe_gt_probs = []
+test_accuracies = []
+
+for row in training_rows:
+    probe_gt_prob = float(
         row[
             "probe_mean_gt_probability"
         ]
     )
-    for row in training_rows
-]
 
-test_accuracies = [
-    float(
+    test_accuracy = float(
         row["test_token_accuracy"]
     )
-    for row in training_rows
-]
+
+    probe_gt_probs.append(
+        probe_gt_prob
+    )
+
+    test_accuracies.append(
+        test_accuracy
+    )
 
 plt.figure(figsize=(8, 4))
 
@@ -150,27 +172,52 @@ plt.close()
 #    English source token을 보는 weight 변화
 # ==================================================
 
-cross_rows = [
-    row
-    for row in attention_rows
-    if (
+cross_rows = []
+
+for row in attention_rows:
+    is_cross_attention = (
         row["attention_type"]
         == "decoder_cross"
-        and int(row["head"]) == 0
     )
-]
+
+    is_head_zero = (
+        int(row["head"]) == 0
+    )
+
+    if (
+        is_cross_attention
+        and is_head_zero
+    ):
+        cross_rows.append(
+            row
+        )
+
+query_indices = []
+
+for row in cross_rows:
+    query_index = int(
+        row["query_index"]
+    )
+
+    query_indices.append(
+        query_index
+    )
 
 last_query_index = max(
-    int(row["query_index"])
-    for row in cross_rows
+    query_indices
 )
 
-cross_last_rows = [
-    row
-    for row in cross_rows
-    if int(row["query_index"])
-    == last_query_index
-]
+cross_last_rows = []
+
+for row in cross_rows:
+    query_index = int(
+        row["query_index"]
+    )
+
+    if query_index == last_query_index:
+        cross_last_rows.append(
+            row
+        )
 
 by_key = defaultdict(list)
 
@@ -186,22 +233,23 @@ for row in cross_last_rows:
 
 plt.figure(figsize=(8, 5))
 
-for key_token, values in (
-    by_key.items()
-):
-    values.sort(
-        key=lambda x: x[0]
-    )
+for key_token, values in by_key.items():
+    # 값은 step 순서대로 저장되므로
+    # 복잡한 정렬 문법 없이 그대로 사용한다.
+    x = []
+    y = []
 
-    x = [
-        step
-        for step, _ in values
-    ]
+    for value in values:
+        step = value[0]
+        weight = value[1]
 
-    y = [
-        weight
-        for _, weight in values
-    ]
+        x.append(
+            step
+        )
+
+        y.append(
+            weight
+        )
 
     plt.plot(
         x,
@@ -243,25 +291,43 @@ tracked_parameter = (
     "W_Q.0.weight"
 )
 
-tracked_rows = [
-    row
-    for row in parameter_rows
-    if (
+tracked_rows = []
+
+for row in parameter_rows:
+    same_parameter = (
         row["parameter"]
         == tracked_parameter
-        and row["index"] == "0,0"
     )
-]
 
-parameter_steps = [
-    int(row["step"])
-    for row in tracked_rows
-]
+    same_index = (
+        row["index"] == "0,0"
+    )
 
-parameter_values = [
-    float(row["value_before"])
-    for row in tracked_rows
-]
+    if same_parameter and same_index:
+        tracked_rows.append(
+            row
+        )
+
+
+parameter_steps = []
+parameter_values = []
+
+for row in tracked_rows:
+    step = int(
+        row["step"]
+    )
+
+    value = float(
+        row["value_before"]
+    )
+
+    parameter_steps.append(
+        step
+    )
+
+    parameter_values.append(
+        value
+    )
 
 plt.figure(figsize=(8, 4))
 
@@ -295,10 +361,16 @@ plt.close()
 # 5. 같은 parameter의 gradient 변화
 # ==================================================
 
-gradients = [
-    float(row["gradient"])
-    for row in tracked_rows
-]
+gradients = []
+
+for row in tracked_rows:
+    gradient = float(
+        row["gradient"]
+    )
+
+    gradients.append(
+        gradient
+    )
 
 plt.figure(figsize=(8, 4))
 
