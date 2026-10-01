@@ -20,6 +20,16 @@ LEARNING_RATE = 0.05
 SAMPLE_INDEX = 0
 
 
+def print_section(title):
+    print("\n" + "=" * 70)
+    print(title)
+    print("=" * 70)
+
+
+# ==================================================
+# 0. Model / Data 준비
+# ==================================================
+
 (
     train_pairs,
     src_vocab,
@@ -35,14 +45,20 @@ SAMPLE_INDEX = 0
     device=DEVICE,
 )
 
+sample_pair = train_pairs[
+    SAMPLE_INDEX
+]
+
 example = make_example(
-    train_pairs[SAMPLE_INDEX],
+    sample_pair,
     src_vocab,
     tgt_vocab,
     device=DEVICE,
 )
 
-id_to_target = invert_vocab(tgt_vocab)
+id_to_target = invert_vocab(
+    tgt_vocab
+)
 
 criterion = nn.CrossEntropyLoss()
 
@@ -52,48 +68,58 @@ optimizer = torch.optim.SGD(
 )
 
 
-print("=" * 70)
-print("Actual English -> Korean Input / Ground Truth")
-print("=" * 70)
+print_section("0. Input / Decoder Input / GT")
 
-print("Source text:")
-print(example["source_text"])
-
-print("\nSource tokens:")
+print("Encoder Input (English):")
 print(example["src_tokens"])
-
-print("\nSource IDs:")
 print(example["src_ids"])
 
-print("\nTarget text:")
-print(example["target_text"])
-
-print("\nDecoder input tokens:")
+print("\nDecoder Input (Korean):")
 print(example["decoder_input_tokens"])
-
-print("\nDecoder input IDs:")
 print(example["decoder_input_ids"])
 
-print("\nGT tokens:")
+print("\nGround Truth:")
 print(example["gt_tokens"])
-
-print("\nGT IDs:")
 print(example["gt_ids"])
 
 
-tracked_weight = (
-    model
-    .decoder_layers[0]
-    .masked_self_attention
-    .W_Q[0]
-    .weight
+# ==================================================
+# 추적할 parameter 하나 선택
+#
+# Decoder masked self-attention
+# Head 1의 W_Q[0, 0] 하나를 추적한다.
+#
+# 목적:
+# loss.backward() 이후 이 값에도 gradient가 생기고,
+# optimizer.step() 이후 실제 값이 바뀌는지 확인한다.
+# ==================================================
+
+decoder_layer = model.decoder_layers[0]
+
+masked_attention = (
+    decoder_layer.masked_self_attention
 )
 
-weight_before = tracked_weight[0, 0].detach().item()
+head_1_W_Q = masked_attention.W_Q[0]
+
+tracked_weight_matrix = (
+    head_1_W_Q.weight
+)
+
+weight_before = (
+    tracked_weight_matrix[0, 0]
+    .detach()
+    .item()
+)
 
 
 # ==================================================
 # 1. Forward
+#
+# Encoder Input + Decoder Input
+# -> Transformer
+# -> logits
+# -> probability
 # ==================================================
 
 optimizer.zero_grad()
@@ -106,17 +132,15 @@ trace = model(
 logits = trace["logits"]
 probabilities = trace["probabilities"]
 
-loss = criterion(
-    logits,
-    example["gt_ids"],
+pred_ids = probabilities.argmax(
+    dim=-1
 )
-
-pred_ids = probabilities.argmax(dim=-1)
 
 pred_tokens = []
 
 for token_id in pred_ids:
     token_id_number = token_id.item()
+
     token = id_to_target[
         token_id_number
     ]
@@ -125,174 +149,201 @@ for token_id in pred_ids:
         token
     )
 
-gt_probabilities = probabilities[
-    torch.arange(len(example["gt_ids"])),
-    example["gt_ids"],
-]
 
+print_section("1. Forward")
 
-print("\n" + "=" * 70)
-print("1. Forward")
-print("=" * 70)
+print("Encoder output shape:")
+print(
+    trace["encoder_output"].shape
+)
 
-print("Encoder output:")
-print(trace["encoder_output"])
-print("shape:", trace["encoder_output"].shape)
+print("\nDecoder output shape:")
+print(
+    trace["decoder_output"].shape
+)
 
-print("\nCausal mask:")
-print(trace["causal_mask"])
-
-print("\nDecoder output:")
-print(trace["decoder_output"])
-print("shape:", trace["decoder_output"].shape)
-
-print("\nLogits:")
-print(logits)
-print("shape:", logits.shape)
-
-print("\nProbabilities:")
-print(probabilities)
-
-print("\nGT probabilities:")
-for token, prob in zip(
-    example["gt_tokens"],
-    gt_probabilities,
-):
-    print(f"P({token:>8}) = {prob.item():.6f}")
+print("\nLogits shape:")
+print(
+    logits.shape
+)
 
 print("\nPrediction:")
-print(pred_tokens)
+print(
+    pred_tokens
+)
 
 print("\nGround Truth:")
-print(example["gt_tokens"])
-
-print("\nLoss:")
-print(loss.item())
+print(
+    example["gt_tokens"]
+)
 
 
 # ==================================================
-# 2. Attention
+# 2. Loss
+#
+# 각 position에서 GT token의 probability를 확인하고
+# 전체 position의 Cross Entropy Loss를 계산한다.
 # ==================================================
 
-masked_weights = trace["masked_attention"][0]
-cross_weights = trace["cross_attention"][0]
+gt_probabilities = []
+
+num_positions = len(
+    example["gt_ids"]
+)
+
+for position in range(
+    num_positions
+):
+    gt_id_tensor = example[
+        "gt_ids"
+    ][position]
+
+    gt_id = gt_id_tensor.item()
+
+    gt_probability_tensor = (
+        probabilities[
+            position,
+            gt_id,
+        ]
+    )
+
+    gt_probability = (
+        gt_probability_tensor.item()
+    )
+
+    gt_probabilities.append(
+        gt_probability
+    )
 
 
-print("\n" + "=" * 70)
-print("2. Attention Weights")
-print("=" * 70)
+loss = criterion(
+    logits,
+    example["gt_ids"],
+)
 
-print("Masked Self-Attention - Layer 1 / Head 1")
-print(masked_weights[0])
 
-print("\nCross-Attention - Layer 1 / Head 1")
-print(cross_weights[0])
+print_section("2. Ground Truth Probability / Loss")
+
+for position in range(
+    num_positions
+):
+    gt_token = example[
+        "gt_tokens"
+    ][position]
+
+    gt_probability = (
+        gt_probabilities[position]
+    )
+
+    print(
+        "position",
+        position,
+        "| GT =",
+        gt_token,
+        "| probability =",
+        f"{gt_probability:.6f}",
+    )
+
+print("\nCross Entropy Loss:")
+print(
+    loss.item()
+)
 
 
 # ==================================================
 # 3. Backward
+#
+# loss.backward()
+# -> 각 learnable parameter에 gradient가 계산된다.
 # ==================================================
 
 loss.backward()
 
-tracked_grad = tracked_weight.grad[0, 0].detach().item()
+tracked_gradient = (
+    tracked_weight_matrix.grad[
+        0,
+        0,
+    ]
+    .detach()
+    .item()
+)
 
 
-def grad_norm(parameter):
-    if parameter.grad is None:
-        return 0.0
-    return parameter.grad.norm().item()
+print_section("3. Backward -> Gradient")
 
-
-print("\n" + "=" * 70)
-print("3. Backward")
-print("=" * 70)
-
+print("Tracked parameter:")
 print(
-    "Tracked parameter:\n"
-    "decoder Layer 1 / masked self-attention / "
+    "Decoder Layer 1 / "
+    "Masked Self-Attention / "
     "Head 1 / W_Q[0,0]"
 )
 
-print(f"weight before = {weight_before:.8f}")
-print(f"gradient      = {tracked_grad:.8f}")
-
-print("\nGradient norms:")
-
+print("\nParameter before update:")
 print(
-    "masked W_Q:",
-    grad_norm(
-        model.decoder_layers[0]
-        .masked_self_attention
-        .W_Q[0]
-        .weight
-    ),
+    weight_before
 )
 
+print("\nGradient dLoss/dW:")
 print(
-    "masked W_K:",
-    grad_norm(
-        model.decoder_layers[0]
-        .masked_self_attention
-        .W_K[0]
-        .weight
-    ),
-)
-
-print(
-    "masked W_V:",
-    grad_norm(
-        model.decoder_layers[0]
-        .masked_self_attention
-        .W_V[0]
-        .weight
-    ),
-)
-
-print(
-    "cross W_Q:",
-    grad_norm(
-        model.decoder_layers[0]
-        .cross_attention
-        .W_Q[0]
-        .weight
-    ),
-)
-
-print(
-    "output_linear:",
-    grad_norm(model.output_linear.weight),
+    tracked_gradient
 )
 
 
 # ==================================================
 # 4. Optimizer Step
+#
+# SGD:
+# W_new = W_old - learning_rate * gradient
 # ==================================================
+
+expected_weight_after = (
+    weight_before
+    - LEARNING_RATE
+    * tracked_gradient
+)
 
 optimizer.step()
 
-weight_after = tracked_weight[0, 0].detach().item()
-delta = weight_after - weight_before
+weight_after = (
+    tracked_weight_matrix[0, 0]
+    .detach()
+    .item()
+)
 
 
-print("\n" + "=" * 70)
-print("4. Optimizer Step")
-print("=" * 70)
+print_section("4. Optimizer Step -> Parameter Update")
 
-print(f"weight before = {weight_before:.8f}")
-print(f"gradient      = {tracked_grad:.8f}")
-print(f"learning rate = {LEARNING_RATE}")
-print(f"weight after  = {weight_after:.8f}")
-print(f"delta weight  = {delta:.8f}")
-
+print("Weight before:")
 print(
-    "\nSGD에서는 대략 "
-    "weight_after = weight_before - lr * gradient"
+    weight_before
+)
+
+print("\nLearning rate:")
+print(
+    LEARNING_RATE
+)
+
+print("\nGradient:")
+print(
+    tracked_gradient
+)
+
+print("\nExpected by SGD formula:")
+print(
+    expected_weight_after
+)
+
+print("\nActual weight after optimizer.step():")
+print(
+    weight_after
 )
 
 
 # ==================================================
-# 5. Update 후 Forward를 다시 확인
+# 5. Update 후 Loss 다시 계산
+#
+# optimizer.step() 후 같은 example을 다시 forward해서
+# loss가 어떻게 변했는지 확인한다.
 # ==================================================
 
 with torch.no_grad():
@@ -301,21 +352,55 @@ with torch.no_grad():
         example["decoder_input_ids"],
     )
 
+    logits_after = trace_after[
+        "logits"
+    ]
+
     loss_after = criterion(
-        trace_after["logits"],
+        logits_after,
         example["gt_ids"],
     )
 
 
-print("\n" + "=" * 70)
-print("5. Loss Before / After One Update")
-print("=" * 70)
+print_section("5. Loss Before / After One Update")
 
-print(f"before: {loss.item():.6f}")
-print(f"after : {loss_after.item():.6f}")
+print("Loss before:")
+print(
+    loss.item()
+)
+
+print("\nLoss after:")
+print(
+    loss_after.item()
+)
+
+
+print_section("6. Final Flow")
 
 print(
-    "\n이번 파일의 목적은 실제 EN-KO sentence pair를 사용해 "
-    "forward -> loss -> backward -> gradient -> "
-    "parameter update를 한 번 끝까지 연결하는 것이다."
+    """
+Encoder Input + Decoder Input
+        ↓
+      model()
+        ↓
+      logits
+        ↓
+CrossEntropy(logits, GT)
+        ↓
+       loss
+        ↓
+  loss.backward()
+        ↓
+     gradient
+        ↓
+ optimizer.step()
+        ↓
+parameter update
+"""
+)
+
+print(
+    "핵심: forward에서 만든 loss가 backward를 통해 "
+    "Attention의 learnable parameter까지 gradient를 전달하고, "
+    "optimizer.step()이 그 parameter를 실제로 바꾼다."
 )
