@@ -53,25 +53,34 @@ OUTPUT_DIR.mkdir(
 
 test_pairs = load_translation_pairs(TEST_PATH)
 
-train_examples = [
-    make_example(
-        pair,
-        src_vocab,
-        tgt_vocab,
-        device=DEVICE,
-    )
-    for pair in train_pairs
-]
+train_examples = []
 
-test_examples = [
-    make_example(
+for pair in train_pairs:
+    example = make_example(
         pair,
         src_vocab,
         tgt_vocab,
         device=DEVICE,
     )
-    for pair in test_pairs
-]
+
+    train_examples.append(
+        example
+    )
+
+
+test_examples = []
+
+for pair in test_pairs:
+    example = make_example(
+        pair,
+        src_vocab,
+        tgt_vocab,
+        device=DEVICE,
+    )
+
+    test_examples.append(
+        example
+    )
 
 probe_example = test_examples[
     PROBE_TEST_INDEX
@@ -429,12 +438,22 @@ training_fields = [
     "probe_mean_gt_probability",
     "test_mean_loss",
     "test_token_accuracy",
-] + [
-    f"probe_gt_probability_{i}"
-    for i in range(
-        len(probe_example["gt_ids"])
-    )
 ]
+
+num_probe_positions = len(
+    probe_example["gt_ids"]
+)
+
+for i in range(
+    num_probe_positions
+):
+    field_name = (
+        f"probe_gt_probability_{i}"
+    )
+
+    training_fields.append(
+        field_name
+    )
 
 
 write_csv(
